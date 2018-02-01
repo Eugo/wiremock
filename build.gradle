@@ -29,7 +29,7 @@ apply plugin: 'com.github.johnrengelman.shadow'
 sourceCompatibility = 1.7
 targetCompatibility = 1.7
 group = 'com.github.tomakehurst'
-version = '2.11.0'
+version = '2.14.0'
 
 def shouldPublishLocally = System.getProperty('LOCAL_PUBLISH')
 
@@ -84,8 +84,10 @@ dependencies {
 
     testCompile "com.googlecode.jarjar:jarjar:1.3"
     testCompile "commons-io:commons-io:2.4"
-    testCompile 'org.scala-lang:scala-library:2.11.8'
+    testCompile 'org.scala-lang:scala-library:2.11.12'
     testCompile 'org.littleshoot:littleproxy:1.1.2'
+
+    testCompile 'org.apache.httpcomponents:httpmime:4.5'
 
     testRuntime 'org.slf4j:slf4j-log4j12:1.7.12'
     testRuntime files('src/test/resources/classpath file source/classpathfiles.zip', 'src/test/resources/classpath-filesource.jar')
@@ -349,14 +351,23 @@ task signAll {
 
 task npmInstall(type: Exec) {
     workingDir 'docs-v2'
-    commandLine 'npm', 'i'
+	if (System.getProperty('os.name').toLowerCase(Locale.ROOT).contains('windows')) {
+		commandLine 'cmd', '/c', 'npm', 'i'
+	} else {
+		commandLine 'npm', 'i'
+	}    
 }
 
 task generateApiDocs(type: Exec) {
     dependsOn npmInstall
     workingDir 'docs-v2'
-    commandLine 'npm', 'run', 'apidocs'
+		if (System.getProperty('os.name').toLowerCase(Locale.ROOT).contains('windows')) {
+		commandLine 'cmd', '/c', 'npm', 'run', 'apidocs'
+	} else {
+		commandLine 'npm', 'run', 'apidocs'
+	}
 }
+
 jar.dependsOn generateApiDocs
 processResources.dependsOn generateApiDocs
 

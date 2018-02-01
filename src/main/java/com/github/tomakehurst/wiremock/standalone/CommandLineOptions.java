@@ -28,10 +28,10 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 
-import com.github.tomakehurst.wiremock.admin.AdminTask;
 import com.github.tomakehurst.wiremock.common.*;
 import com.github.tomakehurst.wiremock.extension.ResponseDefinitionTransformer;
 import com.github.tomakehurst.wiremock.extension.responsetemplating.ResponseTemplateTransformer;
+import com.github.tomakehurst.wiremock.http.ThreadPoolFactory;
 import com.github.tomakehurst.wiremock.http.trafficlistener.DoNothingWiremockNetworkTrafficListener;
 import com.github.tomakehurst.wiremock.core.MappingsSaver;
 import com.github.tomakehurst.wiremock.core.Options;
@@ -42,6 +42,7 @@ import com.github.tomakehurst.wiremock.http.CaseInsensitiveKey;
 import com.github.tomakehurst.wiremock.http.HttpServerFactory;
 import com.github.tomakehurst.wiremock.http.trafficlistener.ConsoleNotifyingWiremockNetworkTrafficListener;
 import com.github.tomakehurst.wiremock.http.trafficlistener.WiremockNetworkTrafficListener;
+import com.github.tomakehurst.wiremock.jetty9.QueuedThreadPoolFactory;
 import com.github.tomakehurst.wiremock.security.Authenticator;
 import com.github.tomakehurst.wiremock.security.BasicAuthenticator;
 import com.github.tomakehurst.wiremock.security.NoAuthenticator;
@@ -91,6 +92,8 @@ public class CommandLineOptions implements Options {
     private static final String LOCAL_RESPONSE_TEMPLATING = "local-response-templating";
     private static final String ADMIN_API_BASIC_AUTH = "admin-api-basic-auth";
     private static final String ADMIN_API_REQUIRE_HTTPS = "admin-api-require-https";
+    private static final String ASYNCHRONOUS_RESPONSE_ENABLED = "async-response-enabled";
+    private static final String ASYNCHRONOUS_RESPONSE_THREADS = "async-response-threads";
 
     private final OptionSet optionSet;
     private final FileSource fileSource;
@@ -129,6 +132,8 @@ public class CommandLineOptions implements Options {
         optionParser.accepts(LOCAL_RESPONSE_TEMPLATING, "Preprocess selected responses with Handlebars templates");
         optionParser.accepts(ADMIN_API_BASIC_AUTH, "Require HTTP Basic authentication for admin API calls with the supplied credentials in username:password format").withRequiredArg();
         optionParser.accepts(ADMIN_API_REQUIRE_HTTPS, "Require HTTPS to be used to access the admin API");
+        optionParser.accepts(ASYNCHRONOUS_RESPONSE_ENABLED, "Enable asynchronous response").withRequiredArg().defaultsTo("false");
+        optionParser.accepts(ASYNCHRONOUS_RESPONSE_THREADS, "Number of asynchronous response threads").withRequiredArg().defaultsTo("10");
 
         optionParser.accepts(HELP, "Print this message");
 
@@ -193,6 +198,11 @@ public class CommandLineOptions implements Options {
         } catch (Exception e) {
             return throwUnchecked(e, null);
         }
+    }
+
+    @Override
+    public ThreadPoolFactory threadPoolFactory() {
+        return new QueuedThreadPoolFactory();
     }
 
     private boolean specifiesPortNumber() {
@@ -261,7 +271,7 @@ public class CommandLineOptions implements Options {
     public boolean help() {
 		return optionSet.has(HELP);
 	}
-	
+
 	public String helpText() {
 		return helpText;
 	}
@@ -469,4 +479,20 @@ public class CommandLineOptions implements Options {
 
         return value.toString();
     }
+
+    @Override
+    public AsynchronousResponseSettings getAsynchronousResponseSettings() {
+        return new AsynchronousResponseSettings(isAsynchronousResponseEnabled(), getAsynchronousResponseThreads());
+    }
+
+    private boolean isAsynchronousResponseEnabled() {
+        return optionSet.has(ASYNCHRONOUS_RESPONSE_ENABLED) ?
+                Boolean.valueOf((String) optionSet.valueOf(ASYNCHRONOUS_RESPONSE_ENABLED)) :
+                false;
+    }
+
+    private int getAsynchronousResponseThreads() {
+        return Integer.valueOf((String) optionSet.valueOf(ASYNCHRONOUS_RESPONSE_THREADS));
+    }
+
 }

@@ -15,12 +15,19 @@
  */
 package com.github.tomakehurst.wiremock.common;
 
+import org.apache.commons.io.FileUtils;
 import org.junit.Test;
 
+import java.io.File;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.List;
 
 import static com.github.tomakehurst.wiremock.testsupport.WireMatchers.fileNamed;
 import static com.github.tomakehurst.wiremock.testsupport.WireMatchers.hasExactlyIgnoringOrder;
+import static org.hamcrest.Matchers.is;
 import static org.junit.Assert.assertThat;
 
 public class SingleRootFileSourceTest {
@@ -53,12 +60,25 @@ public class SingleRootFileSourceTest {
 	@Test(expected=IllegalArgumentException.class)
 	public void writeThrowsExceptionWhenGivenPathNotUnderRoot() {
 		SingleRootFileSource fileSource = new SingleRootFileSource("src/test/resources/filesource");
-		fileSource.writeTextFile("/somewhere/not/under/root", "stuff");
+		String badPath = Paths.get("..", "not-under-root").toAbsolutePath().toString();
+		fileSource.writeTextFile(badPath, "stuff");
 	}
 
 	@Test(expected=IllegalArgumentException.class)
 	public void deleteThrowsExceptionWhenGivenPathNotUnderRoot() {
 		SingleRootFileSource fileSource = new SingleRootFileSource("src/test/resources/filesource");
-		fileSource.deleteFile("/somewhere/not/under/root");
+        String badPath = Paths.get("..", "not-under-root").toAbsolutePath().toString();
+		fileSource.deleteFile(badPath);
+	}
+
+	@Test
+	public void writesTextFileEvenWhenRootIsARelativePath() throws IOException {
+		String relativeRootPath = "./target/tmp/";
+		FileUtils.forceMkdir(new File(relativeRootPath));
+		SingleRootFileSource fileSource = new SingleRootFileSource(relativeRootPath);
+		Path fileAbsolutePath = Paths.get(relativeRootPath).toAbsolutePath().resolve("myFile");
+		fileSource.writeTextFile(fileAbsolutePath.toString(), "stuff");
+
+		assertThat(Files.exists(fileAbsolutePath), is(true));
 	}
 }

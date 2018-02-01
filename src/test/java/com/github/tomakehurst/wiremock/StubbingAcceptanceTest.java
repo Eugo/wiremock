@@ -17,8 +17,10 @@ package com.github.tomakehurst.wiremock;
 
 import com.github.tomakehurst.wiremock.admin.model.ListStubMappingsResult;
 import com.github.tomakehurst.wiremock.http.Fault;
+import com.github.tomakehurst.wiremock.testsupport.MultipartBody;
 import com.github.tomakehurst.wiremock.stubbing.StubMapping;
 import com.github.tomakehurst.wiremock.testsupport.WireMockResponse;
+import java.util.Collections;
 import org.apache.http.MalformedChunkCodingException;
 import org.apache.http.NoHttpResponseException;
 import org.apache.http.client.ClientProtocolException;
@@ -40,10 +42,15 @@ import static com.github.tomakehurst.wiremock.client.WireMock.any;
 import static com.github.tomakehurst.wiremock.client.WireMock.equalTo;
 import static com.github.tomakehurst.wiremock.http.RequestMethod.GET;
 import static com.github.tomakehurst.wiremock.http.RequestMethod.POST;
+import static com.github.tomakehurst.wiremock.testsupport.MultipartBody.part;
 import static com.github.tomakehurst.wiremock.testsupport.TestHttpHeader.withHeader;
 import static java.net.HttpURLConnection.HTTP_NOT_FOUND;
 import static java.net.HttpURLConnection.HTTP_OK;
+import static java.util.Collections.singletonList;
+import static org.apache.http.entity.ContentType.APPLICATION_JSON;
 import static org.apache.http.entity.ContentType.APPLICATION_OCTET_STREAM;
+import static org.apache.http.entity.ContentType.APPLICATION_XML;
+import static org.apache.http.entity.ContentType.TEXT_PLAIN;
 import static org.hamcrest.Matchers.*;
 import static org.junit.Assert.assertThat;
 import static org.junit.Assert.assertTrue;
@@ -318,98 +325,6 @@ public class StubbingAcceptanceTest extends AcceptanceTestBase {
 	}
 
 	@Test
-	public void responseWithFixedDelay() {
-	    stubFor(get(urlEqualTo("/delayed/resource")).willReturn(
-			aResponse()
-				.withStatus(200)
-				.withBody("Content")
-				.withFixedDelay(500)));
-
-	    long start = System.currentTimeMillis();
-        testClient.get("/delayed/resource");
-        int duration = (int) (System.currentTimeMillis() - start);
-
-        assertThat(duration, greaterThanOrEqualTo(500));
-	}
-
-	@Test
-	public void responseWithByteDribble() {
-		byte[] body = new byte[] {1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
-		int numberOfChunks = body.length / 2;
-		int chunkedDuration = 1000;
-
-		stubFor(get(urlEqualTo("/dribble")).willReturn(
-				aResponse()
-						.withStatus(200)
-						.withBody(body)
-						.withChunkedDribbleDelay(numberOfChunks, chunkedDuration)));
-
-		long start = System.currentTimeMillis();
-		WireMockResponse response = testClient.get("/dribble");
-		long timeTaken = System.currentTimeMillis() - start;
-
-		assertThat(response.statusCode(), is(200));
-		assertThat(timeTaken, greaterThanOrEqualTo((long) chunkedDuration));
-
-		assertThat(body, is(response.binaryContent()));
-	}
-
-	@Test
-	public void responseWithByteDribbleAndFixedDelay() {
-		byte[] body = new byte[] {1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
-		int numberOfChunks = body.length / 2;
-		int fixedDelay = 1000;
-		int chunkedDuration = 1000;
-		int totalDuration = fixedDelay + chunkedDuration;
-
-		stubFor(get(urlEqualTo("/dribbleWithFixedDelay")).willReturn(
-				aResponse()
-						.withStatus(200)
-						.withBody(body)
-						.withChunkedDribbleDelay(numberOfChunks, chunkedDuration)
-						.withFixedDelay(fixedDelay)));
-
-		long start = System.currentTimeMillis();
-		WireMockResponse response = testClient.get("/dribbleWithFixedDelay");
-		long timeTaken = System.currentTimeMillis() - start;
-
-		assertThat(response.statusCode(), is(200));
-		assertThat(timeTaken, greaterThanOrEqualTo((long) totalDuration));
-
-		assertThat(body, is(response.binaryContent()));
-	}
-
-	@Test
-    public void responseWithLogNormalDistributedDelay() {
-        stubFor(get(urlEqualTo("/lognormal/delayed/resource")).willReturn(
-			aResponse()
-				.withStatus(200)
-				.withBody("Content")
-				.withLogNormalRandomDelay(90, 0.1)));
-
-        long start = System.currentTimeMillis();
-        testClient.get("/lognormal/delayed/resource");
-        int duration = (int) (System.currentTimeMillis() - start);
-
-        assertThat(duration, greaterThanOrEqualTo(60));
-    }
-
-	@Test
-	public void responseWithUniformDistributedDelay() {
-		stubFor(get(urlEqualTo("/uniform/delayed/resource")).willReturn(
-			aResponse()
-				.withStatus(200)
-				.withBody("Content")
-				.withUniformRandomDelay(50, 60)));
-
-		long start = System.currentTimeMillis();
-		testClient.get("/uniform/delayed/resource");
-		int duration = (int) (System.currentTimeMillis() - start);
-
-		assertThat(duration, greaterThanOrEqualTo(50));
-	}
-
-	@Test
 	public void highPriorityMappingMatchedFirst() {
 		stubFor(get(urlMatching("/priority/.*")).atPriority(10)
 				.willReturn(aResponse()
@@ -602,6 +517,125 @@ public class StubbingAcceptanceTest extends AcceptanceTestBase {
 
 	    assertThat(listAllStubMappings().getMappings(), hasItem(named("Get all the things")));
     }
+
+	@Test
+	public void matchingOnMultipartRequestBodyWithTwoRegexes() {
+		stubFor(post(urlEqualTo("/match/this/part"))
+				.withMultipartRequestBody(
+						aMultipart().withBody(matching(".*Blah.*"))
+				)
+				.withMultipartRequestBody(
+						aMultipart().withBody(matching(".*@[0-9]{5}@.*"))
+				)
+				.willReturn(aResponse()
+						.withStatus(HTTP_OK)
+						.withBodyFile("plain-example.txt")));
+
+		WireMockResponse response = testClient.postWithMultiparts("/match/this/part", singletonList(part("part-1", "Blah...but not the rest", TEXT_PLAIN)));
+		assertThat(response.statusCode(), is(HTTP_NOT_FOUND));
+		response = testClient.postWithMultiparts("/match/this/part", singletonList(part("part-1", "@12345@...but not the rest", TEXT_PLAIN)));
+		assertThat(response.statusCode(), is(HTTP_NOT_FOUND));
+
+		response = testClient.postWithMultiparts("/match/this/part", singletonList(part("good-part", "BlahBlah@56565@Blah", TEXT_PLAIN)));
+		assertThat(response.statusCode(), is(HTTP_OK));
+	}
+
+	@Test
+	public void matchingOnMultipartRequestBodyWithAContainsAndANegativeRegex() {
+		stubFor(post(urlEqualTo("/match/this/part/too"))
+				.withMultipartRequestBody(
+						aMultipart()
+								.withName("part-name")
+								.withBody(containing("Blah"))
+								.withBody(notMatching(".*[0-9]+.*"))
+				)
+				.willReturn(aResponse()
+						.withStatus(HTTP_OK)
+						.withBodyFile("plain-example.txt")));
+
+		WireMockResponse response = testClient.postWithMultiparts("/match/this/part/too", singletonList(part("part-name", "Blah12345", TEXT_PLAIN)));
+		assertThat(response.statusCode(), is(HTTP_NOT_FOUND));
+
+		response = testClient.postWithMultiparts("/match/this/part/too", singletonList(part("part-name", "BlahBlahBlah", TEXT_PLAIN)));
+		assertThat(response.statusCode(), is(HTTP_OK));
+	}
+
+	@Test
+	public void matchingOnMultipartRequestBodyWithEqualTo() {
+		stubFor(post(urlEqualTo("/match/this/part/too"))
+				.withMultipartRequestBody(
+						aMultipart()
+								.withHeader("Content-Type", containing("text/plain"))
+								.withBody(equalTo("BlahBlahBlah"))
+				)
+				.willReturn(aResponse()
+						.withStatus(HTTP_OK)
+						.withBodyFile("plain-example.txt")));
+
+		WireMockResponse response = testClient.postWithMultiparts("/match/this/part/too", singletonList(part("part", "Blah12345", TEXT_PLAIN)));
+		assertThat(response.statusCode(), is(HTTP_NOT_FOUND));
+
+		response = testClient.postWithMultiparts("/match/this/part/too", singletonList(part("part", "BlahBlahBlah", TEXT_PLAIN)));
+		assertThat(response.statusCode(), is(HTTP_OK));
+	}
+
+	@Test
+	public void matchingOnMultipartRequestBodyWithBinaryEqualTo() {
+		byte[] requestBody = new byte[] { 1, 2, 3 };
+
+		stubFor(post("/match/part/binary")
+				.withMultipartRequestBody(
+						aMultipart()
+								.withBody(binaryEqualTo(requestBody))
+								.withName("file")
+				)
+				.willReturn(ok("Matched binary"))
+		);
+
+		WireMockResponse response = testClient.postWithMultiparts("/match/part/binary", singletonList(part("file", new byte[] { 9 })));
+		assertThat(response.statusCode(), is(HTTP_NOT_FOUND));
+
+		response = testClient.postWithMultiparts("/match/part/binary", singletonList(part("file", requestBody)));
+		assertThat(response.statusCode(), is(HTTP_OK));
+	}
+
+	@Test
+	public void matchingOnMultipartRequestBodyWithAdvancedJsonPath() {
+		stubFor(post("/jsonpath/advanced/part")
+				.withMultipartRequestBody(
+						aMultipart()
+								.withName("json")
+								.withHeader("Content-Type", containing("application/json"))
+								.withBody(matchingJsonPath("$.counter", equalTo("123")))
+				)
+				.willReturn(ok())
+		);
+
+		WireMockResponse response = testClient.postWithMultiparts("/jsonpath/advanced/part", singletonList(part("json", "{ \"counter\": 234 }", APPLICATION_JSON)));
+		assertThat(response.statusCode(), is(HTTP_NOT_FOUND));
+
+		response = testClient.postWithMultiparts("/jsonpath/advanced/part", singletonList(part("json", "{ \"counter\": 123 }", APPLICATION_JSON)));
+		assertThat(response.statusCode(), is(HTTP_OK));
+	}
+
+	@Test
+	public void matchingOnMultipartRequestBodyWithAdvancedXPath() {
+		stubFor(post("/xpath/advanced/part")
+				.withMultipartRequestBody(
+						aMultipart()
+								.withName("xml")
+								.withHeader("Content-Type", containing("application/xml"))
+								.withBody(matchingXPath("//counter/text()", equalTo("123")))
+				)
+				.willReturn(ok())
+		);
+
+		WireMockResponse response = testClient.postWithMultiparts("/xpath/advanced/part", singletonList(part("xml", "<counter>6666</counter>", APPLICATION_XML)));
+		assertThat(response.statusCode(), is(HTTP_NOT_FOUND));
+
+		response = testClient.postWithMultiparts("/xpath/advanced/part", singletonList(part("xml", "<counter>123</counter>", APPLICATION_XML)));
+		assertThat(response.statusCode(), is(HTTP_OK));
+	}
 
     private Matcher<StubMapping> named(final String name) {
 	    return new TypeSafeMatcher<StubMapping>() {

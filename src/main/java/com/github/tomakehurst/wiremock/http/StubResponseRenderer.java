@@ -29,7 +29,7 @@ import static com.github.tomakehurst.wiremock.core.WireMockApp.FILES_ROOT;
 import static com.github.tomakehurst.wiremock.http.Response.response;
 
 public class StubResponseRenderer implements ResponseRenderer {
-	
+
 	private final FileSource fileSource;
 	private final GlobalSettingsHolder globalSettingsHolder;
 	private final ProxyResponseRenderer proxyResponseRenderer;
@@ -56,13 +56,11 @@ public class StubResponseRenderer implements ResponseRenderer {
 	}
 
 	private Response buildResponse(ResponseDefinition responseDefinition) {
-		addDelayIfSpecifiedGloballyOrIn(responseDefinition);
-		addRandomDelayIfSpecifiedGloballyOrIn(responseDefinition);
-
 		if (responseDefinition.isProxyResponse()) {
 			return proxyResponseRenderer.render(responseDefinition);
 		} else {
-			return renderDirectly(responseDefinition);
+			Response.Builder responseBuilder = renderDirectly(responseDefinition);
+			return responseBuilder.build();
 		}
 	}
 
@@ -83,12 +81,18 @@ public class StubResponseRenderer implements ResponseRenderer {
 		return applyTransformations(request, responseDefinition, newResponse, transformers.subList(1, transformers.size()));
 	}
 
-	private Response renderDirectly(ResponseDefinition responseDefinition) {
+	private Response.Builder renderDirectly(ResponseDefinition responseDefinition) {
         Response.Builder responseBuilder = response()
                 .status(responseDefinition.getStatus())
 				.statusMessage(responseDefinition.getStatusMessage())
                 .headers(responseDefinition.getHeaders())
                 .fault(responseDefinition.getFault())
+				.configureDelay(
+					globalSettingsHolder.get().getFixedDelay(),
+					globalSettingsHolder.get().getDelayDistribution(),
+					responseDefinition.getFixedDelayMilliseconds(),
+					responseDefinition.getDelayDistribution()
+				)
 				.chunkedDribbleDelay(responseDefinition.getChunkedDribbleDelay());
 
 		if (responseDefinition.specifiesBodyFile()) {
@@ -102,44 +106,35 @@ public class StubResponseRenderer implements ResponseRenderer {
             }
 		}
 
-        return responseBuilder.build();
+        return responseBuilder;
 	}
-	
-    private void addDelayIfSpecifiedGloballyOrIn(ResponseDefinition response) {
-    	Optional<Integer> optionalDelay = getDelayFromResponseOrGlobalSetting(response);
-        if (optionalDelay.isPresent()) {
-	        try {
-	            Thread.sleep(optionalDelay.get());
-	        } catch (InterruptedException e) {
-	            Thread.currentThread().interrupt();
-	        }
-	    }
-    }
-    
-    private Optional<Integer> getDelayFromResponseOrGlobalSetting(ResponseDefinition response) {
-    	Integer delay = response.getFixedDelayMilliseconds() != null ?
-    			response.getFixedDelayMilliseconds() :
-    			globalSettingsHolder.get().getFixedDelay();
-    	
-    	return Optional.fromNullable(delay);
-    }
 
-    private void addRandomDelayIfSpecifiedGloballyOrIn(ResponseDefinition response) {
-		if (response.getDelayDistribution() != null) {
-			addRandomDelayIn(response.getDelayDistribution());
-		} else {
-			addRandomDelayIn(globalSettingsHolder.get().getDelayDistribution());
-		}
-    }
-
-	private void addRandomDelayIn(DelayDistribution delayDistribution) {
-		if (delayDistribution == null) return;
-
-		long delay = delayDistribution.sampleMillis();
-		try {
-           TimeUnit.MILLISECONDS.sleep(delay);
-        } catch (InterruptedException e) {
-           Thread.currentThread().interrupt();
-        }
-	}
+//    private void addDelayIfSpecifiedGloballyOrIn(ResponseDefinition responseDefinition, Response.Builder responseBuilder) {
+//    	Optional<Integer> optionalDelay = getDelayFromResponseOrGlobalSetting(responseDefinition);
+//        if (optionalDelay.isPresent()) {
+//        	responseBuilder.incrementInitialDelay(optionalDelay.get());
+//	    }
+//    }
+//
+//    private Optional<Integer> getDelayFromResponseOrGlobalSetting(ResponseDefinition responseDefinition) {
+//    	Integer delay = responseDefinition.getFixedDelayMilliseconds() != null ?
+//    			responseDefinition.getFixedDelayMilliseconds() :
+//    			globalSettingsHolder.get().getFixedDelay();
+//
+//    	return Optional.fromNullable(delay);
+//    }
+//
+//    private void addRandomDelayIfSpecifiedGloballyOrIn(ResponseDefinition responseDefinition, Response.Builder responseBuilder) {
+//		DelayDistribution delayDistribution;
+//
+//		if (responseDefinition.getDelayDistribution() != null) {
+//			delayDistribution = responseDefinition.getDelayDistribution();
+//		} else {
+//			delayDistribution = globalSettingsHolder.get().getDelayDistribution();
+//		}
+//
+//		if (delayDistribution != null) {
+//			responseBuilder.incrementInitialDelay(delayDistribution.sampleMillis());
+//		}
+//    }
 }

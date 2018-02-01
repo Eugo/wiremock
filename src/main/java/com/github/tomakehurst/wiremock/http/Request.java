@@ -17,10 +17,18 @@ package com.github.tomakehurst.wiremock.http;
 
 import com.google.common.base.Optional;
 
+import java.util.Collection;
 import java.util.Map;
 import java.util.Set;
 
 public interface Request {
+
+    interface Part {
+        String getName();
+        HttpHeader getHeader(String name);
+        HttpHeaders getHeaders();
+        Body getBody();
+    }
 
     String getUrl();
     String getAbsoluteUrl();
@@ -41,6 +49,10 @@ public interface Request {
     byte[] getBody();
     String getBodyAsString();
     String getBodyAsBase64();
+
+    boolean isMultipart();
+    Collection<Part> getParts();
+    Part getPart(String name);
 
     boolean isBrowserProxyRequest();
 
